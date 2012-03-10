@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>QTrashWindow</class>
+ <widget class="QWidget" name="QTrashWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>480</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>QTtash</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTreeView" name="treeView"/>
+   </item>
+  </layout>
+  <action name="actionRestore">
+   <property name="text">
+    <string>Restore</string>
+   </property>
+  </action>
+  <action name="actionRemove">
+   <property name="text">
+    <string>Remove</string>
+   </property>
+  </action>
+  <action name="actionEmptyTrash">
+   <property name="text">
+    <string>EmptyTrash</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
