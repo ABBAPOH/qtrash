@@ -13,11 +13,7 @@ int main(int argc, char *argv[])
     bool ok = true;
     QString newPath;
 
-#if defined(Q_OS_MAC)
-    QFile f("/Users/arch/file.bin");
-#elif  defined(Q_OS_WIN)
-    QFile f("C:/Documents and Settings/arch/file.bin");
-#endif
+    QFile f(QDir::homePath() + QLatin1Char('/') + QLatin1String("file.bin"));
     f.open(QFile::WriteOnly);
     f.close();
 
@@ -42,6 +38,8 @@ int main(int argc, char *argv[])
     f2.open(QFile::WriteOnly);
     f2.write(arr);
     f2.close();
+
+    qDebug() << "trash list:" << trash.trashes();
 
 //    qDebug() << "opening for writing" << infoFile.open(QFile::WriteOnly);
 //    infoFile.write(arr);

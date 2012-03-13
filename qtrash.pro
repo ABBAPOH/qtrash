@@ -29,7 +29,7 @@ HEADERS  += \
     qdriveinfo.h \
     qdriveinfo_p.h
 
-macx : {
+macx- : {
 OBJECTIVE_SOURCES += qtrash_mac.mm
 SOURCES += qdriveinfo_mac.cpp
 LIBS += -framework CoreServices -framework DiskArbitration -framework IOKit -framework QuickLook -framework AppKit
@@ -41,12 +41,14 @@ SOURCES += qtrash_win.cpp
 LIBS += -luserenv -lNetapi32 -lMpr -luser32 -lWinmm
 }
 
-linux : {
+linux-* : {
 SOURCES += qdriveinfo_linux.cpp
+SOURCES += qtrash_linux.cpp
 }
 
 FORMS += \
     qtrashwindow.ui
+
 
 
 

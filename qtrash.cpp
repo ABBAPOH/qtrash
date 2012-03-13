@@ -32,38 +32,3 @@ QTrash::~QTrash()
 {
     delete d_ptr;
 }
-
-//QStringList QTrash::trashes() const
-//{
-//    Q_D(const QTrash);
-
-//    d->ensurePopulated();
-
-//    QStringList result;
-
-//    foreach (const QTrashInfo &trash, d->trashes) {
-//        result.append(trash.path);
-//    }
-
-//    return result;
-//}
-
-//bool QTrash::moveToTrash(const QString &path, QString *trashPath)
-//{
-//}
-
-//bool QTrash::restore(const QString &trashPath)
-//{
-//}
-
-//bool QTrash::remove(const QString &trashPath)
-//{
-//}
-
-//QStringList QTrash::listFiles()
-//{
-//}
-
-//void QTrash::clearTrash()
-//{
-//}

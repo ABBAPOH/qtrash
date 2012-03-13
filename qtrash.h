@@ -33,8 +33,8 @@ public:
 
     QStringList trashes() const;
 
-    void clearTrash(); // +++ this is slow... on linux/mac we can notify, on win - can't...
     void clearTrash(const QString &trash);
+    void clearTrash(); // +++ this is slow... on linux/mac we can notify, on win - can't...
 
 signals:
 
