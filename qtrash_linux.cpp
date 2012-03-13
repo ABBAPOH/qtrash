@@ -68,9 +68,9 @@ static inline QString infoPath(const QString &trash)
     return trash + QLatin1Char('/') + QLatin1String("info");
 }
 
-static inline QString infoPath(const QString &trash, const QString &file)
+static inline QString infoPath(const QString &trash, const QString &fileName)
 {
-    return trash + QLatin1Char('/') + QLatin1String("info") + QLatin1Char('/') + file + ".trashinfo";
+    return trash + QLatin1Char('/') + QLatin1String("info") + QLatin1Char('/') + fileName + ".trashinfo";
 }
 
 static inline QString filesPath(const QString &trash)
@@ -78,9 +78,11 @@ static inline QString filesPath(const QString &trash)
     return trash + QLatin1Char('/') + QLatin1String("files");
 }
 
-static bool testDir(const QString &trashDir)
+static bool testDir(const QString &dir)
 {
-    return true;
+    QFileInfo info(dir);
+    // TODO : check permissions
+    return info.exists() && info.isDir();
 }
 
 static bool checkTrashSubdirs(const QString &trashPath)
@@ -90,7 +92,7 @@ static bool checkTrashSubdirs(const QString &trashPath)
 
 static bool testDriveAdminTrash(const QString &rootTrashDir)
 {
-//    // (1) Administrator-created $topdir/.Trash directory
+// (1) Administrator-created $topdir/.Trash directory
 
 //    const QString rootTrashDir = topdir + QString::fromLatin1("/.Trash");
 //    const QByteArray rootTrashDir_c = QFile::encodeName( rootTrashDir );
@@ -145,61 +147,34 @@ static bool testDriveUserTrash(const QString &trashPath)
     return ok;
 }
 
+static bool initTrashDirectory(const QString &trash)
+{
+}
+
 static QString getDriveTrash(const QString &topdir, bool createIfNeeded)
 {
-//    // (2) $topdir/.Trash-$uid
-//    const QString trashDir = topdir + QString::fromLatin1("/.Trash-") + QString::number( uid );
-//    const QByteArray trashDir_c = QFile::encodeName( trashDir );
-//    if ( KDE_lstat( trashDir_c, &buff ) == 0 )
-//    {
-//        if ( (buff.st_uid == uid) // must be owned by user
-//             && (S_ISDIR(buff.st_mode)) // must be a dir
-//             && (!S_ISLNK(buff.st_mode)) // not a symlink
-//             && ((buff.st_mode & 0777) == 0700) ) { // rwx for user, ------ for group and others
+    // (1) Administrator-created $topdir/.Trash directory
+    QString adminTrash = getDriveAdminTrash(topdir);
+    if (testDriveAdminTrash(adminTrash))
+        return adminTrash;
 
-//            if ( checkTrashSubdirs( trashDir_c ) )
-//                return trashDir;
-//        }
-//        kDebug() << "Directory " << trashDir << " exists but didn't pass the security checks, can't use it";
-//        // Exists, but not useable
-//        return QString();
-//    }
-//    if ( createIfNeeded && initTrashDirectory( trashDir_c ) ) {
-//        return trashDir;
-//    }
-//    return QString();
+    // (2) $topdir/.Trash-$uid
+    QString userTrash = getDriveUserTrash(topdir);
+    if (testDriveUserTrash(userTrash))
+        return userTrash;
+
+    if (createIfNeeded && initTrashDirectory(userTrash))
+        return userTrash;
+
+    return QString();
 }
 
-QTrashPrivate::QTrashPrivate()
-{
-}
-
-bool QTrash::moveToTrash(const QString &path, QString *trashPath)
-{
-}
-
-bool QTrash::restore(const QString &trashPath)
-{
-}
-
-static QString trashPathForFile(const QString &file)
+static QString trashPathForTrashedFile(const QString &file)
 {
     QString result = file;
     result = QFileInfo(result).path();
     result = QFileInfo(result).path();
     return result;
-}
-
-bool QTrash::remove(const QString &trashPath)
-{
-    Q_D(QTrash);
-
-    bool ok = d->removePath(trashPath);
-    if (ok) {
-        ok = QFile::remove(infoPath(trashPathForFile(trashPath), QFileInfo(trashPath).fileName()));
-    }
-
-    return ok;
 }
 
 #include <QtCore/QSettings>
@@ -215,6 +190,130 @@ static void readInfoFile(const QString &infoPath, QTrashFileInfoData &data)
     if (!QFileInfo(data.originalPath).isAbsolute())
         data.originalPath = QDriveInfo(infoPath).rootPath() + '/' + data.originalPath;
     data.deletionDateTime = QDateTime::fromString(info.value(QLatin1String("DeletionDate")).toString(), Qt::ISODate);
+}
+
+static bool writeInfoFile(const QString &infoPath, QTrashFileInfoData &data)
+{
+//    if (!QFileInfo(infoPath).exists())
+//        return;
+
+//    QSettings info(infoPath, QSettings::IniFormat);
+//    info.setIniCodec("utf-8");
+//    info.beginGroup(QLatin1String("Trash Info"));
+
+//    info.setValue(QLatin1String("Path"), QString::fromAscii(data.originalPath.replace(" ", "%20").toUtf8().data()));
+//    info.setValue(QLatin1String("DeletionDate"), data.deletionDateTime.toString(Qt::ISODate));
+//    return info.status() == QSettings::NoError;
+
+    QFile file(infoPath);
+    if ( !file.open( QIODevice::WriteOnly | QIODevice::Text ) ) {
+//            qWarning() << Q_FUNC_INFO << "Could not write to file" << path;
+            return false;
+    }
+
+    QTextStream out(&file);
+    out << "[Trash Info]" << endl;
+    out << "Path=" << data.originalPath.replace(" ", "%20") << endl;
+    out << "DeletionDate=" << data.deletionDateTime.toString(Qt::ISODate) << endl;
+//    for ( QStringList::const_iterator s = data.begin(); s != data.end(); s++ ) {
+//            out << *s << "\n";
+//    }
+    return true;
+
+}
+
+static QString getNewFileName(const QString &trash, const QString &file)
+{
+    QDir dir(trash);
+    QFileInfo info(file);
+    QString baseName = info.baseName();
+    QString suffix = info.suffix();
+    QString newName = baseName + "." + suffix;
+
+    for(int i = 1; dir.exists(newName); i++ )
+        newName = baseName + " " + QString::number(i) + "." + suffix;
+
+    return newName;
+}
+
+QTrashPrivate::QTrashPrivate()
+{
+}
+
+QString findTrash(const QString &origPath)
+{
+    QString homeTrash = getHomeTrash();
+    QDriveInfo homeDrive(homeTrash);
+    QDriveInfo fileDrive(origPath);
+
+    if (fileDrive == homeDrive)
+        return homeTrash;
+
+    return getDriveTrash(fileDrive.rootPath(), true);
+}
+
+
+bool QTrash::moveToTrash(const QString &path, QString *trashPath)
+{
+    QString localPath = path;
+    QString trash = findTrash(path);
+
+    if (trash.isEmpty())
+        return false;
+
+    if (trash != getHomeTrash())
+        localPath = path.mid(QDriveInfo(path).rootPath().length());
+
+    QTrashFileInfoData data;
+    data.originalPath = localPath;
+    data.deletionDateTime = QDateTime::currentDateTime();
+//    data.size = QFileInfo(path.size());
+    QString filesPath = ::filesPath(trash);
+    QString newName = getNewFileName(filesPath, path);
+    QString infoPath = ::infoPath(trash, newName);
+
+    bool ok = QFile::rename(path, filesPath + '/' + newName);
+    if (!ok)
+        return false;
+
+    ok &= writeInfoFile(infoPath, data);
+    if (trashPath)
+        *trashPath = filesPath + '/' + newName;
+
+    return ok;
+}
+
+bool QTrash::restore(const QString &trashPath)
+{
+    QString fileName = QFileInfo(trashPath).fileName();
+    QString trash = trashPathForTrashedFile(trashPath);
+    QString infoPath = ::infoPath(trash, fileName);
+    QTrashFileInfoData data;
+    readInfoFile(infoPath, data);
+
+    if (data.originalPath.isEmpty())
+        return false;
+
+    bool ok = QFile::rename(trashPath, data.originalPath);
+    if (!ok)
+        return false;
+
+    // if this fails, it is ok, we already restored file
+    QFile::remove(infoPath);
+
+    return ok;
+}
+
+bool QTrash::remove(const QString &trashPath)
+{
+    Q_D(QTrash);
+
+    bool ok = d->removePath(trashPath);
+    if (ok) {
+        ok = QFile::remove(infoPath(trashPathForTrashedFile(trashPath), QFileInfo(trashPath).fileName()));
+    }
+
+    return ok;
 }
 
 QTrashFileInfoList QTrash::files(const QString &trash) const
