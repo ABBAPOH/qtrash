@@ -384,20 +384,53 @@ QStringList QTrash::trashes() const
     return result;
 }
 
+static QStringList listDir(const QString &path)
+{
+    return QDir(path).entryList(QDir::NoDotAndDotDot | QDir::Dirs | QDir::Files | QDir::Hidden);
+}
+
 void QTrash::clearTrash(const QString &trash)
 {
-    Q_D(QTrash);
+    // The naive implementation "delete info and files in every trash directory"
+    // breaks when deleted directories contain files owned by other users.
+    // We need to ensure that the .trashinfo file is only removed when the
+    // corresponding files could indeed be removed
 
-    foreach (const QTrashFileInfo &info, files(trash)) {
-        d->removePath(info.path());
+    // On the other hand, we certainly want to remove any file that has no associated
+    // .trashinfo file for some reason
+
+    bool ok = true;
+
+    QSet<QString> unremoveableFiles;
+
+    const QTrashFileInfoList fileInfoList = files(trash);
+
+    foreach (const QTrashFileInfo &info, fileInfoList) {
+        const QString filesPath = info.path();
+        if (d_func()->removePath(filesPath)) {
+            QFile::remove(getInfoPath(trash, info.name()));
+        } else {
+            ok = false;
+            // remember not to remove this file
+            unremoveableFiles.insert(filesPath);
+        }
     }
+
+    // Now do the orphaned-files cleanup
+    QString filesDir = getFilesPath(trash);
+    foreach (const QString &fileName, listDir(filesDir)) {
+        const QString filePath = filesDir + QLatin1Char('/') + fileName;
+        if (!unremoveableFiles.contains(filePath)) {
+            QFile::remove(filePath);
+        }
+    }
+
+    return void();
 }
 
 void QTrash::clearTrash()
 {
-    Q_D(QTrash);
-
-    foreach (const QTrashFileInfo &info, files()) {
-        d->removePath(info.path());
+    foreach (const QString &trash, trashes()) {
+        clearTrash(trash);
     }
 }
