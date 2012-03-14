@@ -8,14 +8,24 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
+#include <QtCore/QMutex>
 
 #include "qdriveinfo.h"
 #include "qtrashfileinfo_p.h"
 
-QMap<QString, QTrashFileInfo> QTrashPrivate::deletedFiles;
-
-QTrashPrivate::QTrashPrivate()
+static inline QString getHomeTrash()
 {
+    return QDir().homePath() + QLatin1Char('/') + QLatin1String(".Trash");
+}
+
+static inline QString getUserId()
+{
+    return QString::number(getuid(), 10);
+}
+
+static QString getDriveTrash(const QString &drive)
+{
+    return drive + QLatin1Char('/') + QLatin1String(".Trashes") + QLatin1Char('/') + getUserId();
 }
 
 static void notifyFinder(const QString &trash)
@@ -31,13 +41,22 @@ static void notifyFinder(const QString &trash)
     [trashPath release];
 }
 
+QMutex m_mutex;
+QMap<QString, QTrashFileInfo> QTrashPrivate::deletedFiles;
+
+QTrashPrivate::QTrashPrivate()
+{
+}
+
 bool QTrash::moveToTrash(const QString &path, QString *newFilePath)
 {
     Q_D(QTrash);
 
     QByteArray pathUtf8 = path.toUtf8();
     char *newPathUtf8 = 0;
-    OSStatus result = FSPathMoveObjectToTrashSync(pathUtf8.constData(), &newPathUtf8, kFSFileOperationDoNotMoveAcrossVolumes);
+    OSStatus result = FSPathMoveObjectToTrashSync(pathUtf8.constData(),
+                                                  &newPathUtf8,
+                                                  kFSFileOperationDoNotMoveAcrossVolumes);
 
     QString newPath = QString::fromUtf8(newPathUtf8);
     free(newPathUtf8);
@@ -47,7 +66,9 @@ bool QTrash::moveToTrash(const QString &path, QString *newFilePath)
     data.path = newPath;
     data.deletionDateTime = QDateTime::currentDateTime();
     data.size = QFileInfo(newPath).size();
+    m_mutex.lock();
     d->deletedFiles.insert(newPath, QTrashFileInfo(data));
+    m_mutex.unlock();
 
     notifyFinder(QFileInfo(newPath).path());
 
@@ -61,13 +82,17 @@ bool QTrash::restore(const QString &trashPath)
 {
     Q_D(QTrash);
 
+    m_mutex.lock();
     QString originalPath = d->deletedFiles.value(trashPath).originalPath();
+    m_mutex.unlock();
     if (originalPath.isEmpty())
         return false;
 
     bool ok = QFile::rename(trashPath, originalPath);
     if (ok) {
+        m_mutex.lock();
         d->deletedFiles.remove(trashPath);
+        m_mutex.unlock();
         notifyFinder(QFileInfo(trashPath).path());
     }
 
@@ -80,27 +105,64 @@ bool QTrash::remove(const QString &trashPath)
 
     bool ok = d->removePath(trashPath);
     if (ok) {
+        m_mutex.lock();
         d->deletedFiles.remove(trashPath);
+        m_mutex.unlock();
         notifyFinder(QFileInfo(trashPath).path());
     }
 
     return ok;
 }
 
-static QString getHomeTrash()
+QTrashFileInfoList QTrash::files(const QString &trash) const
 {
-    QString homePath = QDir().homePath();
-    return homePath + QLatin1Char('/') + QLatin1String(".Trash");
+    Q_D(const QTrash);
+
+    QTrashFileInfoList result;
+    QStringList paths;
+
+    QDir trashDir(trash);
+    foreach (const QString &file, trashDir.entryList(QDir::NoDotAndDotDot | QDir::AllEntries)) {
+        QString filePath = trashDir.absoluteFilePath(file);
+        paths.append(filePath);
+
+        m_mutex.lock();
+        if (d->deletedFiles.contains(filePath)) {
+            result.append(d->deletedFiles.value(filePath));
+            m_mutex.unlock();
+        } else {
+            m_mutex.unlock();
+            QTrashFileInfoData data;
+            // we can't determine original path here
+            data.path = filePath;
+            data.size = QFileInfo(trashDir.absoluteFilePath(file)).size();
+            result.append(QTrashFileInfo(data));
+        }
+    }
+
+    // update deleted files if file was deleted from elsewhere
+    m_mutex.lock();
+    foreach (const QString &path, d->deletedFiles.keys()) {
+        if (path.startsWith(trash)) { // file within current trash
+            if (!paths.contains(path)) {
+                d->deletedFiles.remove(path);
+            }
+        }
+    }
+    m_mutex.unlock();
+
+    return result;
 }
 
-static QString getUserId()
+QTrashFileInfoList QTrash::files() const
 {
-    return QString::number(getuid(), 10);
-}
+    QTrashFileInfoList result;
 
-static QString getDriveTrash(const QString &drive)
-{
-    return QString(QLatin1String("%1/.Trashes/%2")).arg(drive).arg(getUserId());
+    foreach (const QString &trashPath, trashes()) {
+        result.append(files(trashPath));
+    }
+
+    return result;
 }
 
 QStringList QTrash::trashes() const
@@ -122,59 +184,6 @@ QStringList QTrash::trashes() const
     return result;
 }
 
-QTrashFileInfoList QTrash::files(const QString &trash) const
-{
-    Q_D(const QTrash);
-
-    QTrashFileInfoList result;
-    QStringList paths;
-
-    QDir trashDir(trash);
-    foreach (const QString &file, trashDir.entryList(QDir::NoDotAndDotDot | QDir::AllEntries)) {
-        QString filePath = trashDir.absoluteFilePath(file);
-        paths.append(filePath);
-
-        if (d->deletedFiles.contains(filePath)) {
-            result.append(d->deletedFiles.value(filePath));
-        } else {
-            QTrashFileInfoData data;
-            // we can't determine original path here
-            data.path = filePath;
-            data.size = QFileInfo(trashDir.absoluteFilePath(file)).size();
-            result.append(QTrashFileInfo(data));
-        }
-    }
-
-    // update deleted files if file was deleted from elsewhere
-    foreach (const QString &path, d->deletedFiles.keys()) {
-        if (path.startsWith(trash)) { // file within current trash
-            if (!paths.contains(path)) {
-                d->deletedFiles.remove(path);
-            }
-        }
-    }
-
-    return result;
-}
-
-QTrashFileInfoList QTrash::files() const
-{
-    QTrashFileInfoList result;
-
-    foreach (const QString &trashPath, trashes()) {
-        result.append(files(trashPath));
-    }
-
-    return result;
-}
-
-void QTrash::clearTrash()
-{
-    foreach (const QTrashFileInfo &info, files()) {
-        remove(info.path());
-    }
-}
-
 void QTrash::clearTrash(const QString &trash)
 {
     foreach (const QTrashFileInfo &info, files(trash)) {
@@ -182,4 +191,11 @@ void QTrash::clearTrash(const QString &trash)
     }
 
     notifyFinder(trash);
+}
+
+void QTrash::clearTrash()
+{
+    foreach (const QTrashFileInfo &info, files()) {
+        remove(info.path());
+    }
 }
