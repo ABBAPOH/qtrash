@@ -24,6 +24,5 @@ struct INFO2Record
 };
 
 void updateInfo2(const QString &trash, const QString &exclude);
-void updateInfo22(QString file, QString &newPath);
 
 #endif // INFO2_H
