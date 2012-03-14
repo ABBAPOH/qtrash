@@ -37,18 +37,21 @@ static inline time_t filetimeToTime_t(const FILETIME *time)
     return i64.QuadPart;
 }
 
-QTrashPrivate::QTrashPrivate()
+static void updateVistaInfo(const QString &trash, const QString &baseName)
 {
-    // get trash IShellFolder object
-    LPITEMIDLIST  iilTrash;
-    IShellFolder *isfDesktop;
+    QString infoFile = trash + QLatin1Char('/') + QLatin1String("$I") + baseName.mid(2);
+    QFile::remove(infoFile);
+}
 
-    // we assume that this will always work - if not we've a bigger problem than a kio_trash crash...
-    SHGetFolderLocation(0, CSIDL_BITBUCKET, 0, 0, &iilTrash);
-    SHGetDesktopFolder( &isfDesktop );
-    isfDesktop->BindToObject( iilTrash, 0, IID_IShellFolder2, (void**)&m_isfTrashFolder );
-    isfDesktop->Release();
-    SHGetMalloc(&m_pMalloc);
+static void updateInfo(const QString &path)
+{
+    QFileInfo info(path);
+    QString trash = info.path();
+    QString baseName = info.baseName();
+    if (baseName.startsWith(QLatin1String("$R")))
+        updateVistaInfo(trash, baseName);
+    else
+        updateInfo2(trash, path);
 }
 
 static bool doFileOp(const QString &path, UINT wFunc, FILEOP_FLAGS fFlags)
@@ -87,10 +90,73 @@ static int indexOfTrashPath(const QTrashFileInfoList &files, const QString &path
     return -1;
 }
 
+static QString getUserSID()
+{
+    wchar_t *user_name = 0;
+    wchar_t *dom = 0;
+    wchar_t *sid_str = 0;
+    SID_NAME_USE use;
+    PSID psid = 0;
+    DWORD size, dom_size;
+
+    size = 0;
+    GetUserName(0, &size);
+
+    user_name = new wchar_t[size + 1];
+    if (!user_name)
+        return QString();
+
+    if (!GetUserNameW(user_name, &size))
+       goto done;
+
+    size = 0;
+    dom_size = 0;
+    LookupAccountName(0, user_name, 0, &size, 0, &dom_size, &use);
+
+    psid = (PSID) malloc(size);
+
+    dom = new wchar_t[dom_size];
+
+    if (!psid || !dom)
+        goto done;
+
+    if (!LookupAccountName(0, user_name, psid, &size, dom, &dom_size, &use))
+       goto done;
+
+    if (!ConvertSidToStringSid(psid, &sid_str))
+       goto done;
+
+done:
+    delete user_name;
+    delete(dom);
+    free(psid);
+
+    QString result = QString::fromWCharArray(sid_str);
+    free(sid_str);
+    return result;
+}
+
+static inline QString getTrash(const QString &rootPath)
+{
+    return rootPath + QLatin1String("RECYCLER") + QLatin1Char('/') + getUserSID();
+}
+
+QTrashPrivate::QTrashPrivate()
+{
+    // get trash IShellFolder object
+    LPITEMIDLIST  iilTrash;
+    IShellFolder *isfDesktop;
+
+    // we assume that this will always work - if not we've a bigger problem than a kio_trash crash...
+    SHGetFolderLocation(0, CSIDL_BITBUCKET, 0, 0, &iilTrash);
+    SHGetDesktopFolder( &isfDesktop );
+    isfDesktop->BindToObject( iilTrash, 0, IID_IShellFolder2, (void**)&m_isfTrashFolder );
+    isfDesktop->Release();
+    SHGetMalloc(&m_pMalloc);
+}
+
 bool QTrash::moveToTrash(const QString &path, QString *trashPath)
 {
-    Q_D(QTrash);
-
     QTime t;
     t.start();
 
@@ -115,8 +181,6 @@ bool QTrash::moveToTrash(const QString &path, QString *trashPath)
 
 bool QTrash::restore(const QString &trashPath)
 {
-    Q_D(QTrash);
-
     QTrashFileInfoList files = this->files();
     int index = indexOfTrashPath(files, trashPath);
     if (index == -1)
@@ -127,23 +191,9 @@ bool QTrash::restore(const QString &trashPath)
     QString originalPath = files.at(index).originalPath();
     bool ok = QFile::rename(trashPath, originalPath);
     qDebug() << "restore" << trashPath << originalPath << ok;
-    // TODO: update info file here
+    if (ok)
+        updateInfo(trashPath);
     return ok;
-}
-
-static void updateVistaInfo(const QString &trash, const QString &baseName)
-{
-    QString infoFile = trash + QLatin1Char('/') + QLatin1String("$I") + baseName.mid(2);
-    QFile::remove(infoFile);
-}
-
-static void updateInfo(const QString &trash, const QString &path)
-{
-    QString baseName = QFileInfo(path).baseName();
-    if (baseName.startsWith(QLatin1String("$R")))
-        updateVistaInfo(trash, baseName);
-    else
-        updateInfo2(trash, path);
 }
 
 bool QTrash::remove(const QString &trashPath)
@@ -153,7 +203,7 @@ bool QTrash::remove(const QString &trashPath)
     if (!ok)
         return false;
 
-    updateInfo2(QFileInfo(trashPath).path(), trashPath);
+    updateInfo(trashPath);
 
     return ok;
 }
@@ -225,57 +275,6 @@ QTrashFileInfoList QTrash::files(const QString &trash) const
     return d->getFiles(trash);
 }
 
-static QString getUserSID()
-{
-    wchar_t *user_name = 0;
-    wchar_t *dom = 0;
-    wchar_t *sid_str = 0;
-    SID_NAME_USE use;
-    PSID psid = 0;
-    DWORD size, dom_size;
-
-    size = 0;
-    GetUserName(0, &size);
-
-    user_name = new wchar_t[size + 1];
-    if (!user_name)
-        return QString();
-
-    if (!GetUserNameW(user_name, &size))
-       goto done;
-
-    size = 0;
-    dom_size = 0;
-    LookupAccountName(0, user_name, 0, &size, 0, &dom_size, &use);
-
-    psid = (PSID) malloc(size);
-
-    dom = new wchar_t[dom_size];
-
-    if (!psid || !dom)
-        goto done;
-
-    if (!LookupAccountName(0, user_name, psid, &size, dom, &dom_size, &use))
-       goto done;
-
-    if (!ConvertSidToStringSid(psid, &sid_str))
-       goto done;
-
-done:
-    delete user_name;
-    delete(dom);
-    free(psid);
-
-    QString result = QString::fromWCharArray(sid_str);
-    free(sid_str);
-    return result;
-}
-
-static inline QString getTrash(const QString &rootPath)
-{
-    return rootPath + QLatin1String("RECYCLER") + QLatin1Char('/') + getUserSID();
-}
-
 QStringList QTrash::trashes() const
 {
     QStringList result;
@@ -291,6 +290,11 @@ QStringList QTrash::trashes() const
     }
 
     return result;
+}
+
+void QTrash::clearTrash(const QString &trash)
+{
+    SHEmptyRecycleBin(0, (wchar_t*)trash.unicode(), SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
 }
 
 void QTrash::clearTrash()

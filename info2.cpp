@@ -75,6 +75,9 @@ void updateInfo2(const QString &trash, const QString &exclude)
     uint number = fileName.mid(2, dotIndex - 2).toInt();
 
     QFile f(trash + "/INFO2");
+    if (!f.open(QFile::ReadOnly))
+        return;
+
     QBuffer buf;
     buf.open(QBuffer::WriteOnly);
 
