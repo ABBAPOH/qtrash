@@ -11,6 +11,9 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x500
 #include <Shlobj.h>
+#undef WINVER
+#define WINVER 0x500
+#include <Sddl.h>
 
 #include <QTime>
 #include <QtCore/QFileInfo>
@@ -18,6 +21,7 @@
 #include <QDebug>
 
 #include "info2_p.h"
+#include "qdriveinfo.h"
 #include "qtrashfileinfo_p.h"
 
 static const qint64 SECONDS_SINCE_1601 =  11644473600LL;
@@ -204,6 +208,74 @@ QTrashFileInfoList QTrash::files(const QString &trash) const
     Q_D(const QTrash);
 
     return d->getFiles(trash);
+}
+
+static QString getUserSID()
+{
+    wchar_t *user_name = 0;
+    wchar_t *dom = 0;
+    wchar_t *sid_str = 0;
+    SID_NAME_USE use;
+    PSID psid = 0;
+    DWORD size, dom_size;
+
+    size = 0;
+    GetUserName(NULL, &size);
+
+    user_name = new wchar_t[size + 1];
+    if (!user_name)
+        return QString();
+
+    if (!GetUserNameW(user_name, &size))
+       goto done;
+
+    size = 0;
+    dom_size = 0;
+    LookupAccountName(NULL, user_name, NULL, &size, NULL, &dom_size, &use);
+
+    psid = (PSID) malloc(size);
+
+    dom = new wchar_t[dom_size];
+
+    if (!psid || !dom)
+        goto done;
+
+    if (!LookupAccountName(NULL, user_name, psid, &size, dom, &dom_size, &use))
+       goto done;
+
+    if (!ConvertSidToStringSid(psid, &sid_str))
+       goto done;
+
+done:
+    delete user_name;
+    delete(dom);
+    free(psid);
+
+    QString result = QString::fromWCharArray(sid_str);
+    free(sid_str);
+    return result;
+}
+
+static inline QString getTrash(const QString &rootPath)
+{
+    return rootPath + QLatin1String("RECYCLER") + QLatin1Char('/') + getUserSID();
+}
+
+QStringList QTrash::trashes() const
+{
+    QStringList result;
+
+    foreach (const QDriveInfo &drive, QDriveInfo::drives()) {
+        QString rootPath = drive.rootPath();
+        if (rootPath == QLatin1String("A:/") || rootPath == QLatin1String("B:/"))
+            continue;
+
+        QString trash = getTrash(rootPath);
+        if (QFileInfo(trash).exists())
+            result.append(trash);
+    }
+
+    return result;
 }
 
 void QTrash::clearTrash()
