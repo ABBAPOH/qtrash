@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
     bool ok = true;
     QString newPath;
 
-    QFile f(QDir::homePath() + QLatin1Char('/') + QString::fromUtf8("файл.bin"));
+    QFile f(QDir::homePath() + QLatin1Char('/') + QString::fromUtf8("file.bin"));
     qDebug() << f.fileName();
     f.open(QFile::WriteOnly);
     f.close();
