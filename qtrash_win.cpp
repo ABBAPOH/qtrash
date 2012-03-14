@@ -44,9 +44,9 @@ QTrashPrivate::QTrashPrivate()
     IShellFolder *isfDesktop;
 
     // we assume that this will always work - if not we've a bigger problem than a kio_trash crash...
-    SHGetFolderLocation(NULL, CSIDL_BITBUCKET, 0, 0, &iilTrash);
+    SHGetFolderLocation(0, CSIDL_BITBUCKET, 0, 0, &iilTrash);
     SHGetDesktopFolder( &isfDesktop );
-    isfDesktop->BindToObject( iilTrash, NULL, IID_IShellFolder2, (void**)&m_isfTrashFolder );
+    isfDesktop->BindToObject( iilTrash, 0, IID_IShellFolder2, (void**)&m_isfTrashFolder );
     isfDesktop->Release();
     SHGetMalloc(&m_pMalloc);
 }
@@ -131,6 +131,21 @@ bool QTrash::restore(const QString &trashPath)
     return ok;
 }
 
+static void updateVistaInfo(const QString &trash, const QString &baseName)
+{
+    QString infoFile = trash + QLatin1Char('/') + QLatin1String("$I") + baseName.mid(2);
+    QFile::remove(infoFile);
+}
+
+static void updateInfo(const QString &trash, const QString &path)
+{
+    QString baseName = QFileInfo(path).baseName();
+    if (baseName.startsWith(QLatin1String("$R")))
+        updateVistaInfo(trash, baseName);
+    else
+        updateInfo2(trash, path);
+}
+
 bool QTrash::remove(const QString &trashPath)
 {
     // we can't use SHFileOperation because it doesn't updates INFO2 file
@@ -138,7 +153,7 @@ bool QTrash::remove(const QString &trashPath)
     if (!ok)
         return false;
 
-    updateInfo(QFileInfo(trashPath).path(), trashPath);
+    updateInfo2(QFileInfo(trashPath).path(), trashPath);
 
     return ok;
 }
@@ -163,7 +178,7 @@ QTrashFileInfoList QTrashPrivate::getFiles(const QString &trash) const
 
     LPITEMIDLIST i;
     WIN32_FIND_DATAW findData;
-    while (l->Next( 1, &i, NULL ) == S_OK) {
+    while (l->Next( 1, &i, 0) == S_OK) {
         m_isfTrashFolder->GetDisplayNameOf(i, SHGDN_FORPARSING, &strret);
         data.path = fromWinPath(strret.pOleStr);
         m_pMalloc->Free(strret.pOleStr);
@@ -220,7 +235,7 @@ static QString getUserSID()
     DWORD size, dom_size;
 
     size = 0;
-    GetUserName(NULL, &size);
+    GetUserName(0, &size);
 
     user_name = new wchar_t[size + 1];
     if (!user_name)
@@ -231,7 +246,7 @@ static QString getUserSID()
 
     size = 0;
     dom_size = 0;
-    LookupAccountName(NULL, user_name, NULL, &size, NULL, &dom_size, &use);
+    LookupAccountName(0, user_name, 0, &size, 0, &dom_size, &use);
 
     psid = (PSID) malloc(size);
 
@@ -240,7 +255,7 @@ static QString getUserSID()
     if (!psid || !dom)
         goto done;
 
-    if (!LookupAccountName(NULL, user_name, psid, &size, dom, &dom_size, &use))
+    if (!LookupAccountName(0, user_name, psid, &size, dom, &dom_size, &use))
        goto done;
 
     if (!ConvertSidToStringSid(psid, &sid_str))

@@ -88,7 +88,7 @@ quint64 getDelTime()
     return res;
 }
 
-void updateInfo(const QString &trash, const QString &exclude)
+void updateInfo2(const QString &trash, const QString &exclude)
 {
     // exclude path is in format D<drive><number>
     QString fileName = QFileInfo(exclude).fileName();
@@ -135,7 +135,7 @@ void updateInfo(const QString &trash, const QString &exclude)
     f.write(buf.data());
 }
 
-void updateInfo2(QString file, QString &newPath)
+void updateInfo22(QString file, QString &newPath)
 {
     QString trash = "C:/RECYCLER/S-1-5-21-1177238915-1214440339-839522115-1003";
     QFile f(trash + "/INFO2");

@@ -23,7 +23,7 @@ struct INFO2Record
     QString unicodeName;
 };
 
-void updateInfo(const QString &trash, const QString &exclude);
-void updateInfo2(QString file, QString &newPath);
+void updateInfo2(const QString &trash, const QString &exclude);
+void updateInfo22(QString file, QString &newPath);
 
 #endif // INFO2_H
