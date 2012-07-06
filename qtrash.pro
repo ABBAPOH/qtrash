@@ -16,7 +16,8 @@ SOURCES += main.cpp\
     qtrashwindow.cpp \
     qtrashmodel.cpp \
     info2.cpp \
-    qdriveinfo.cpp
+    qdriveinfo.cpp\
+    qxdg.cpp
 
 HEADERS  += \
     qtrash.h \
@@ -27,7 +28,8 @@ HEADERS  += \
     qtrashmodel.h \
     info2_p.h \
     qdriveinfo.h \
-    qdriveinfo_p.h
+    qdriveinfo_p.h \
+    qxdg.h
 
 macx-* : {
 OBJECTIVE_SOURCES += qtrash_mac.mm

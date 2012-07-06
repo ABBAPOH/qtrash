@@ -47,9 +47,9 @@ static void updateInfo(const QString &path)
 {
     QFileInfo info(path);
     QString trash = info.path();
-    QString baseName = info.baseName();
-    if (baseName.startsWith(QLatin1String("$R")))
-        updateVistaInfo(trash, baseName);
+    QString fileName = info.fileName();
+    if (fileName.startsWith(QLatin1String("$R")))
+        updateVistaInfo(trash, fileName);
     else
         updateInfo2(trash, path);
 }
